@@ -1,0 +1,66 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: checkout-api-slo
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    - name: checkout-api.slo
+      interval: 30s
+      rules:
+        - record: job:http_requests:rate5m
+          expr: sum by (job, status) (rate(http_requests_total[5m]))
+
+        - record: job:http_availability:ratio5m
+          expr: |
+            sum(rate(http_requests_total{job="checkout-api",status!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="checkout-api"}[5m]))
+
+        - record: job:http_latency:p99
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (le) (rate(http_request_duration_seconds_bucket{job="checkout-api"}[5m]))
+            )
+
+        - alert: CheckoutAvailabilitySLOBurn
+          expr: |
+            (1 - job:http_availability:ratio5m) > (1 - 0.999)
+            and
+            (1 - job:http_availability:ratio5m) > 0
+          for: 10m
+          labels:
+            severity: page
+            team: platform
+            slo: availability
+          annotations:
+            summary: "checkout-api 5m availability is below the 99.9% SLO"
+            description: "Availability {{ $value | humanizePercentage }} over 5m. Open a SEV-2 and follow docs/runbooks/availability.md."
+            runbook_url: https://github.com/aravind-prakash-m-2000/production-ready-platform-aws/blob/main/docs/runbooks/availability.md
+
+        - alert: CheckoutLatencySLO
+          expr: job:http_latency:p99 > 0.5
+          for: 15m
+          labels:
+            severity: ticket
+            team: platform
+            slo: latency
+          annotations:
+            summary: "checkout-api p99 latency exceeds 500ms SLO"
+            description: "p99 latency is {{ $value }}s."
+
+        - alert: CheckoutHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="checkout-api",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="checkout-api"}[5m])) > 0.02
+          for: 5m
+          labels:
+            severity: page
+            team: platform
+          annotations:
+            summary: "checkout-api 5xx error rate > 2%"

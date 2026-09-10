@@ -1,0 +1,18 @@
+# Green service used during weighted blue/green cutovers.
+# Keep this service selector pinned to the previous ReplicaSet labels during a rollout.
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout-api-green
+  labels:
+    app.kubernetes.io/name: checkout-api
+    app.kubernetes.io/slot: green
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: checkout-api
+    slot: green
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

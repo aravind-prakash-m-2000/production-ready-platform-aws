@@ -1,0 +1,54 @@
+name: Kubernetes GitOps
+
+on:
+  pull_request:
+    paths:
+      - "kubernetes/**"
+      - "observability/**"
+      - "apps/**"
+      - ".github/workflows/kubernetes.yml"
+  push:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+      - "observability/**"
+      - "apps/**"
+
+permissions:
+  contents: read
+
+jobs:
+  kustomize:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        overlay: [dev, prod]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.0
+      - name: Install kustomize
+        run: |
+          curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz" | tar xz
+          sudo mv kustomize /usr/local/bin/
+      - name: Build overlay
+        run: kustomize build kubernetes/overlays/${{ matrix.overlay }} > /tmp/built.yaml
+      - name: kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -ignore-missing-schemas -summary /tmp/built.yaml
+
+  checkout-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r apps/checkout-api/requirements.txt
+      - run: python -m unittest discover -s apps/checkout-api -p 'test_*.py'
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: apps/checkout-api/Dockerfile
+          failure-threshold: warning

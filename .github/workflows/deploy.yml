@@ -1,0 +1,75 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [dev, prod]
+      apply_terraform:
+        description: Run terraform apply
+        type: boolean
+        default: false
+      sync_gitops:
+        description: Apply kubernetes overlay
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    if: ${{ github.event.inputs.apply_terraform == 'true' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: Plan
+        working-directory: terraform/environments/${{ github.event.inputs.environment }}
+        run: |
+          terraform init -input=false
+          terraform plan -out=tfplan -input=false
+      - name: Apply
+        if: github.event.inputs.environment != 'prod' || github.ref == 'refs/heads/main'
+        working-directory: terraform/environments/${{ github.event.inputs.environment }}
+        run: terraform apply -input=false tfplan
+
+  gitops:
+    if: ${{ always() && github.event.inputs.sync_gitops == 'true' && (needs.terraform.result == 'success' || needs.terraform.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    needs: [terraform]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.0
+      - name: Install kustomize
+        run: |
+          curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz" | tar xz
+          sudo mv kustomize /usr/local/bin/
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name platform-${{ github.event.inputs.environment }} --region us-east-1
+      - name: Apply overlay
+        run: kustomize build kubernetes/overlays/${{ github.event.inputs.environment }} | kubectl apply -f -
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/checkout-api -n platform --timeout=180s

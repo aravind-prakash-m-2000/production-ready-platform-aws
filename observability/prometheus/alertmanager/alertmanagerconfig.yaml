@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: platform-routing
+  namespace: observability
+  labels:
+    alertmanagerConfig: platform
+spec:
+  route:
+    receiver: default-jira
+    groupBy: ["alertname", "namespace"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    routes:
+      - matchers:
+          - name: severity
+            value: page
+        receiver: pager
+        continue: true
+      - matchers:
+          - name: severity
+            value: ticket
+        receiver: default-jira
+  receivers:
+    - name: default-jira
+      webhookConfigs:
+        - url: http://jira-bridge.observability.svc:8080/alertmanager
+          sendResolved: true
+    - name: pager
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-slack
+            key: webhook
+          channel: "#sre-pages"
+          sendResolved: true
+          title: '{{ .Status | toUpper }} {{ .CommonLabels.alertname }}'
+          text: '{{ .CommonAnnotations.summary }}'

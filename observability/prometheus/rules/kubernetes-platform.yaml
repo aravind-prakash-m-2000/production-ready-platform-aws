@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-platform
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: kubernetes.use
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+
+        - alert: PodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+
+        - alert: KubePersistentVolumeFillingUp
+          expr: |
+            kubelet_volume_stats_available_bytes
+            /
+            kubelet_volume_stats_capacity_bytes < 0.1
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} has <10% free space"
+
+        - alert: ClusterAutoscalerUnneeded
+          expr: cluster_autoscaler_unschedulable_pods_count > 0
+          for: 15m
+          labels:
+            severity: page
+          annotations:
+            summary: "Unschedulable pods for 15m — node group may be at max or tainted"
