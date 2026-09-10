@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+replicas:
+  - name: checkout-api
+    count: 2
+
+patches:
+  - target:
+      kind: Ingress
+      name: checkout-api
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: checkout.dev.example.com
+      - op: replace
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1scheme
+        value: internet-facing
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: checkout-api
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+
+configMapGenerator:
+  - name: checkout-api
+    behavior: merge
+    literals:
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=dev
+
+generatorOptions:
+  disableNameSuffixHash: true

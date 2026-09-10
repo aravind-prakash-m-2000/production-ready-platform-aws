@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/platform-dev-aws-lb-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aws-load-balancer-controller
+rules:
+  - apiGroups: ["", "extensions", "networking.k8s.io", "elbv2.k8s.aws"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aws-load-balancer-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aws-load-balancer-controller
+subjects:
+  - kind: ServiceAccount
+    name: aws-load-balancer-controller
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: aws-load-balancer-controller
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aws-load-balancer-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aws-load-balancer-controller
+    spec:
+      serviceAccountName: aws-load-balancer-controller
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: public.ecr.aws/eks/aws-load-balancer-controller:v2.11.0
+          args:
+            - --cluster-name=platform-dev
+            - --ingress-class=alb
+            - --aws-vpc-id=vpc-000000000000
+            - --aws-region=us-east-1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 61779
+            initialDelaySeconds: 15
+          ports:
+            - containerPort: 61779
+              name: webhook

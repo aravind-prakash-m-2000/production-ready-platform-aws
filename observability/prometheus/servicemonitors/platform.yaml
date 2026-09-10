@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-state-metrics
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  namespaceSelector:
+    matchNames:
+      - observability
+  endpoints:
+    - port: http-metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-exporter
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-exporter
+  namespaceSelector:
+    matchNames:
+      - observability
+  endpoints:
+    - port: https
+      scheme: https
+      interval: 30s
+      tlsConfig:
+        insecureSkipVerify: true

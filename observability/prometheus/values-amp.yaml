@@ -1,0 +1,42 @@
+# Values overlay for kube-prometheus-stack (Helm).
+# Install:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n observability --create-namespace -f observability/prometheus/values-amp.yaml
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    scrapeInterval: 15s
+    remoteWrite:
+      - url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-CHANGE_ME/api/v1/remote_write
+        sigv4:
+          region: us-east-1
+        queueConfig:
+          maxSamplesPerSend: 1000
+          maxShards: 200
+          capacity: 2500
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 2
+
+grafana:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false

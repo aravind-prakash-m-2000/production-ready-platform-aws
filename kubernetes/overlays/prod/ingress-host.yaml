@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: checkout-api
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/load-balancer-attributes: deletion_protection.enabled=true,idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/actions.blue-green: |
+      {"type":"forward","forwardConfig":{"targetGroups":[{"serviceName":"checkout-api","servicePort":"80","weight":100},{"serviceName":"checkout-api-green","servicePort":"80","weight":0}]}}
+spec:
+  rules:
+    - host: checkout.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: checkout-api
+                port:
+                  name: http
